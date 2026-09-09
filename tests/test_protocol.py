@@ -21,6 +21,10 @@ class ProtocolTests(unittest.TestCase):
   for value in [True,'12',{},2**54]:
    with self.assertRaises(ProtocolError):parse_request(req('select',{'id':value}))
   with self.assertRaises(ProtocolError):parse_request(req([]))
+ def test_focus(self):
+  self.assertEqual(parse_request(req('focus',{'sender_id':42}))['data']['sender_id'],42)
+  with self.assertRaises(ProtocolError):parse_request(req('focus'))
+  with self.assertRaises(ProtocolError):parse_request(req('focus',{'sender_id':'42'}))
  def test_credentials(self):
   with self.assertRaises(ProtocolError):parse_request(req('login',{'password':'x'*257}))
  def test_frames(self):
