@@ -20,6 +20,30 @@ export type Chat = {
   can_reply: boolean;
   peer_id: number;
 };
+export type PreviewMessage = {
+  id: number;
+  sender_id: number;
+  name: string;
+  outgoing: boolean;
+  text: string;
+};
+export const selectResult = z.object({
+  selected: z.number(),
+  kind: z.enum(["user", "group"]),
+  focus: z.object({ id: z.number(), name: z.string() }).nullable(),
+  messages: z.array(
+    z.object({
+      id: z.number(),
+      sender_id: z.number(),
+      name: z.string(),
+      outgoing: z.boolean(),
+      text: z.string(),
+    }),
+  ),
+});
+export const focusResult = z.object({
+  focus: z.object({ id: z.number(), name: z.string() }),
+});
 export type Profile = {
   id: number;
   name: string;
@@ -50,6 +74,7 @@ export type Operation =
   | "logout"
   | "chats"
   | "select"
+  | "focus"
   | "test"
   | "prepare"
   | "stop"
