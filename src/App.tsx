@@ -1,67 +1,30 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import * as Tabs from "@radix-ui/react-tabs";
-import { useForm, useFieldArray, useWatch } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import {
   Activity,
-  ArrowDownLeft,
-  ArrowRight,
-  ArrowUpRight,
-  Check,
-  CheckCheck,
   ChevronRight,
   CircleHelp,
   Command,
-  FileText,
   Globe,
   Keyboard,
   LayoutDashboard,
   LoaderCircle,
   LockKeyhole,
-  MessageCircle,
-  Plus,
   Power,
-  RefreshCw,
-  Search,
   Send,
   Settings2,
   ShieldCheck,
-  SlidersHorizontal,
   Square,
   Terminal,
-  Trash2,
-  Unplug,
   UserRound,
   X,
-  Zap,
 } from "lucide-react";
 import { Button } from "./components/ui/button";
-import { Confirm, Dialog } from "./components/ui/dialog";
+import { Dialog } from "./components/ui/dialog";
 import { MonkeytypePage } from "./components/Monkeytype";
+import { Journal, Overview, Settings, Studio, Telegram } from "./screens";
 import { useApp, type Page } from "./store/app";
 import { isDesktop, subscribe } from "./lib/bridge";
-import {
-  focusResult,
-  loginResult,
-  publicToEditable,
-  selectResult,
-  settingsSchema,
-  stageLabels,
-  type Config,
-  type PreviewMessage,
-  type SettingsValues,
-} from "./lib/contracts";
-import validateConfig from "./generated/config.js";
 
 const nav: { page: Page; label: string; icon: typeof Activity }[] = [
   { page: "overview", label: "Обзор", icon: LayoutDashboard },
@@ -105,16 +68,15 @@ const titles: Record<
     description: "Состояния движка — без текстов сообщений и секретов.",
   },
 };
-const ignored = () => {};
 function Kbd({ children }: { children: ReactNode }) {
   return <kbd>{children}</kbd>;
 }
-function Avatar({ large = false }: { large?: boolean }) {
+function Avatar() {
   const p = useApp((s) => s.snapshot?.profile);
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [p?.avatar]);
   return (
-    <span className={`avatar ${large ? "avatar-large" : ""}`}>
+    <span className="avatar">
       {p?.avatar && !failed ? (
         <img
           alt={`Фото Telegram: ${p.name}`}
@@ -122,7 +84,7 @@ function Avatar({ large = false }: { large?: boolean }) {
           onError={() => setFailed(true)}
         />
       ) : (
-        <UserRound size={large ? 32 : 20} aria-hidden="true" />
+        <UserRound size={20} aria-hidden="true" />
       )}
     </span>
   );
@@ -142,39 +104,6 @@ function Status() {
             ? "Просмотр в браузере"
             : "Python отключён"}
     </span>
-  );
-}
-function Empty({
-  icon: Icon = Unplug,
-  title,
-  children,
-}: {
-  icon?: typeof Activity;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="empty">
-      <span className="empty-icon">
-        <Icon size={24} />
-      </span>
-      <strong>{title}</strong>
-      <p>{children}</p>
-    </div>
-  );
-}
-function CardTitle({
-  children,
-  icon: Icon,
-}: {
-  children: ReactNode;
-  icon?: typeof Activity;
-}) {
-  return (
-    <div className="card-heading">
-      <h2>{children}</h2>
-      {Icon && <Icon size={18} aria-hidden="true" />}
-    </div>
   );
 }
 function Busy() {
