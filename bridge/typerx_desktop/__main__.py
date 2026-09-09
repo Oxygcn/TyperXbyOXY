@@ -15,7 +15,6 @@ from .typing_output import driver_output, TypingInputError, TypingStopped
 from .guard import capture_guard
 from .peers import (
     can_reply_to_dialog,
-    dialog_kind,
     history_for_focus,
     is_private_user,
     sender_label,
@@ -27,8 +26,8 @@ from .protocol import MAX_REQUEST, MAX_RESPONSE, MinuteCounters, ProtocolError, 
 
 def main() -> int:
     wire = sys.stdout
-    sys.stdout = sys.stderr  # accidental dependency prints never corrupt protocol
-    logging.disable(logging.CRITICAL)  # no auth values, chats or prompts in logs
+    sys.stdout = sys.stderr
+    logging.disable(logging.CRITICAL)
     output_lock = threading.Lock()
     runtime = None
     hotkeys = None
@@ -82,8 +81,7 @@ def main() -> int:
                     self.peers[dialog.id] = dialog.entity
                     result.append({'id': dialog.id, 'name': dialog.name or str(dialog.id),
                                    'can_reply': can_reply_to_dialog(dialog),
-                                   'peer_id': utils.get_peer_id(dialog.entity),
-                                   'kind': dialog_kind(dialog)})
+                                   'peer_id': utils.get_peer_id(dialog.entity)})
                 return result
 
             async def history(self, peer_id):
@@ -192,8 +190,8 @@ def main() -> int:
                 except AuthFlowError as error:
                     raise AIError(str(error)) from None
                 except Exception as error:
-                    if operation in {'code', 'login', 'profile', 'chats', 'logout', 'select', 'focus'} and not isinstance(error, AIError):
-                        raise AIError(safe_diagnostic(operation if operation in {'code', 'login', 'profile', 'logout'} else 'status', error)) from None
+                    if operation in {'code', 'login', 'profile', 'chats', 'logout'} and not isinstance(error, AIError):
+                        raise AIError(safe_diagnostic(operation, error)) from None
                     raise
 
             async def _desktop_dispatch(self, operation, data):
