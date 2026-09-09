@@ -49,11 +49,14 @@ import { Confirm, Dialog } from "./components/ui/dialog";
 import { useApp, type Page } from "./store/app";
 import { isDesktop, subscribe } from "./lib/bridge";
 import {
+  focusResult,
   loginResult,
   publicToEditable,
+  selectResult,
   settingsSchema,
   stageLabels,
   type Config,
+  type PreviewMessage,
   type SettingsValues,
 } from "./lib/contracts";
 import validateConfig from "./generated/config.js";
@@ -81,7 +84,7 @@ const titles: Record<
   telegram: {
     eyebrow: "ПОДКЛЮЧЕНИЯ",
     title: "Ваш Telegram",
-    description: "Только ваш аккаунт. Выбранный личный чат или группа.",
+    description: "Личный чат или группа. В группе цель задаётся сообщением.",
   },
   settings: {
     eyebrow: "ПАРАМЕТРЫ ДВИЖКА",
@@ -750,8 +753,9 @@ function Studio() {
               </span>
               <h2>Ответы в вашем стиле</h2>
               <p>
-                TyperX реагирует только на новые сообщения выбранного чата
-                или группы. Старые сообщения сами по себе не запускают ответ.
+                В личке AI ждёт новые сообщения собеседника. В группе сначала
+                выберите человека в списке сообщений — читаются и отвечаются
+                только его тексты.
               </p>
             </div>
             <div className="detail-row">
@@ -812,9 +816,8 @@ function Studio() {
           </p>
           {!bindChat && mode === "ai" && (
             <p className="field-hint">
-              AI продолжит получать сообщения и историю выбранного чата,
-              но может напечатать ответ в другом чате или приложении.
-              Проверьте получателя самостоятельно.
+              AI продолжит получать сообщения выбранной цели, но может
+              напечатать ответ в другом чате. Проверьте получателя сами.
             </p>
           )}
           <label className="consent">
@@ -900,6 +903,9 @@ function Telegram() {
   const [step, setStep] = useState<"idle" | "code" | "password">("idle");
   const [query, setQuery] = useState("");
   const [confirm, setConfirm] = useState(false);
+  const [preview, setPreview] = useState<PreviewMessage[]>([]);
+  const [focusId, setFocusId] = useState<number | null>(null);
+  const [focusName, setFocusName] = useState<string | null>(null);
   const locked =
     s.busy || s.connection !== "connected" || !!v?.active || !!v?.prepared;
   const login = async (op: "code" | "login") => {
@@ -924,6 +930,28 @@ function Telegram() {
     try {
       await s.run("chats");
       await s.run("profile");
+    } catch {
+      /* Store shows the error */
+    }
+  };
+  const pickChat = async (id: number) => {
+    try {
+      const result = selectResult.parse(await s.run("select", { id }));
+      setPreview(result.messages);
+      setFocusId(result.focus?.id ?? null);
+      setFocusName(result.focus?.name ?? null);
+    } catch {
+      /* Store shows the error */
+    }
+  };
+  const pickSender = async (message: PreviewMessage) => {
+    if (message.outgoing) return;
+    try {
+      const result = focusResult.parse(
+        await s.run("focus", { sender_id: message.sender_id }),
+      );
+      setFocusId(result.focus.id);
+      setFocusName(result.focus.name);
     } catch {
       /* Store shows the error */
     }
@@ -1073,8 +1101,8 @@ function Telegram() {
           />
         </label>
         <p className="field-hint">
-          AI-ответы доступны в личных чатах и группах. Каналы и боты недоступны.
-          В группе ответ запускается на каждое новое текстовое сообщение.
+          В группе после выбора появятся последние 50 сообщений. Нажмите
+          входящее — AI будет читать и отвечать только этому человеку.
         </p>
         <div className="chat-list">
           {v?.chats.length ? (
@@ -1085,9 +1113,7 @@ function Telegram() {
                   key={c.id}
                   className={`chat-row ${v.target?.id === c.id ? "selected-chat" : ""}`}
                   disabled={locked || !c.can_reply}
-                  onClick={() =>
-                    void s.run("select", { id: c.id }).catch(ignored)
-                  }
+                  onClick={() => void pickChat(c.id)}
                 >
                   <span className="chat-avatar">
                     <MessageCircle size={19} />
@@ -1120,11 +1146,48 @@ function Telegram() {
               </Empty>
             )}
         </div>
+        {preview.length > 0 && (
+          <>
+            <p className="field-hint">
+              {focusName
+                ? `Цель AI: ${focusName}. Читаются только сообщения этого человека.`
+                : "Нажмите входящее сообщение, чтобы выбрать, кому отвечает AI."}
+            </p>
+            <div className="chat-list" aria-label="Последние сообщения группы">
+              {preview.map((message) => (
+                <button
+                  key={message.id}
+                  className={`chat-row ${
+                    !message.outgoing && focusId === message.sender_id
+                      ? "selected-chat"
+                      : ""
+                  }`}
+                  disabled={locked || message.outgoing}
+                  onClick={() => void pickSender(message)}
+                >
+                  <span className="chat-avatar">
+                    <UserRound size={19} />
+                  </span>
+                  <span>
+                    <strong>{message.name}</strong>
+                    <small>{message.text}</small>
+                  </span>
+                  {!message.outgoing && focusId === message.sender_id ? (
+                    <Check size={18} />
+                  ) : (
+                    <ChevronRight size={17} />
+                  )}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         {v?.target && (
           <div className="chat-selected">
             <span>
               <Check size={16} />
               {v.target.name}
+              {focusName ? ` · ${focusName}` : ""}
             </span>
             <Button size="sm" onClick={() => s.navigate("studio")}>
               В студию
@@ -1139,6 +1202,9 @@ function Telegram() {
         title="Выйти из Telegram?"
         description="Локальная сессия будет отозвана. Выбранный чат и фото будут очищены. Для повторного входа понадобится код."
         onConfirm={() => {
+          setPreview([]);
+          setFocusId(null);
+          setFocusName(null);
           void s.run("logout").catch(ignored);
         }}
       />
