@@ -9,7 +9,7 @@ MAX_REQUEST = 65_536
 MAX_RESPONSE = 4_000_000
 PROTOCOL = 1
 ALLOWED = frozenset({'snapshot', 'save', 'code', 'login', 'logout', 'chats',
-                     'select', 'test', 'prepare', 'stop', 'profile', 'hello', 'shutdown'})
+                     'select', 'focus', 'test', 'prepare', 'stop', 'profile', 'hello', 'shutdown'})
 
 
 class ProtocolError(ValueError):
@@ -50,6 +50,9 @@ def parse_request(line: bytes) -> dict:
     elif op == 'select':
         if set(data) != {'id'} or type(data['id']) is not int or abs(data['id']) > 2**53-1:
             raise ProtocolError('Invalid peer')
+    elif op == 'focus':
+        if set(data) != {'sender_id'} or type(data['sender_id']) is not int or abs(data['sender_id']) > 2**53-1:
+            raise ProtocolError('Invalid focus sender')
     elif op == 'prepare':
         if not set(data) <= {'mode', 'text', 'consent', 'ack_send', 'bind_chat'} or data.get('mode') not in {'manual', 'ai'}:
             raise ProtocolError('Invalid preparation')
@@ -74,25 +77,3 @@ def validate_config(data: dict) -> None:
         raise ProtocolError('Invalid settings')
     if not text(data.get('api_key', ''), 2048) or not text(data.get('api_hash', ''), 128):
         raise ProtocolError('Invalid secret length')
-    # AIStore.validate remains authoritative for URL rules and preset identity.
-
-
-class MinuteCounters:
-    """No invented WPM or delivery receipts. Counts completed AI output callbacks."""
-    def __init__(self, clock=None):
-        import time
-        self.clock = clock or time.time
-        self.buckets: dict[int, dict] = {}
-
-    def snapshot(self) -> list[dict]:
-        now = int(self.clock() // 60)
-        self.buckets = {k: v for k, v in self.buckets.items() if now-59 <= k <= now}
-        return [self.buckets.get(k, {'minute': k, 'incoming': 0, 'completed': 0})
-                for k in range(now-59, now+1)]
-
-    def add(self, field: str):
-        if field not in {'incoming', 'completed'}:
-            raise ValueError('Unsupported metric')
-        now = int(self.clock() // 60)
-        bucket = self.buckets.setdefault(now, {'minute': now, 'incoming': 0, 'completed': 0})
-        bucket[field] += 1
