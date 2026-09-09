@@ -77,3 +77,24 @@ def validate_config(data: dict) -> None:
         raise ProtocolError('Invalid settings')
     if not text(data.get('api_key', ''), 2048) or not text(data.get('api_hash', ''), 128):
         raise ProtocolError('Invalid secret length')
+
+
+class MinuteCounters:
+    """No invented WPM or delivery receipts. Counts completed AI output callbacks."""
+    def __init__(self, clock=None):
+        import time
+        self.clock = clock or time.time
+        self.buckets: dict[int, dict] = {}
+
+    def snapshot(self) -> list[dict]:
+        now = int(self.clock() // 60)
+        self.buckets = {k: v for k, v in self.buckets.items() if now-59 <= k <= now}
+        return [self.buckets.get(k, {'minute': k, 'incoming': 0, 'completed': 0})
+                for k in range(now-59, now+1)]
+
+    def add(self, field: str):
+        if field not in {'incoming', 'completed'}:
+            raise ValueError('Unsupported metric')
+        now = int(self.clock() // 60)
+        bucket = self.buckets.setdefault(now, {'minute': now, 'incoming': 0, 'completed': 0})
+        bucket[field] += 1
