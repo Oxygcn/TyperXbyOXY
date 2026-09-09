@@ -13,7 +13,14 @@ from pathlib import Path
 from .auth import AuthController, AuthFlowError, safe_diagnostic
 from .typing_output import driver_output, TypingInputError, TypingStopped
 from .guard import capture_guard
-from .peers import can_reply_to_dialog, should_accept_incoming
+from .peers import (
+    can_reply_to_dialog,
+    dialog_kind,
+    history_for_focus,
+    is_private_user,
+    sender_label,
+    should_accept_incoming,
+)
 
 from .protocol import MAX_REQUEST, MAX_RESPONSE, MinuteCounters, ProtocolError, parse_request
 
@@ -29,7 +36,6 @@ def main() -> int:
     instance_lock = None
 
     def emit(message):
-        # F8 is native-only and has no frontend request waiting for a response.
         if message.get('id', '').startswith('hotkey:'):
             if not message.get('ok') and runtime:
                 runtime.notify('error', message.get('error', 'Запуск не выполнен'))
@@ -56,6 +62,17 @@ def main() -> int:
         from typerx.studio_hotkeys import GlobalHotkeys
 
         class DesktopGateway(TelegramGateway):
+            def __init__(self, store, notify):
+                super().__init__(store, notify)
+                self.focus_sender_id = None
+                self.focus_sender_name = None
+                self.preview_names = {}
+
+            def clear_focus(self):
+                self.focus_sender_id = None
+                self.focus_sender_name = None
+                self.preview_names = {}
+
             async def chats(self):
                 if not await self.connect():
                     raise AIError('Сначала войдите в Telegram')
@@ -65,11 +82,52 @@ def main() -> int:
                     self.peers[dialog.id] = dialog.entity
                     result.append({'id': dialog.id, 'name': dialog.name or str(dialog.id),
                                    'can_reply': can_reply_to_dialog(dialog),
-                                   'peer_id': utils.get_peer_id(dialog.entity)})
+                                   'peer_id': utils.get_peer_id(dialog.entity),
+                                   'kind': dialog_kind(dialog)})
                 return result
 
+            async def history(self, peer_id):
+                if peer_id not in self.peers:
+                    raise AIError('Загрузите чаты и выберите собеседника')
+                messages = await self.client.get_messages(self.peers[peer_id], limit=50)
+                rows = []
+                for message in reversed(messages):
+                    if not message.raw_text:
+                        continue
+                    rows.append({
+                        'id': message.id,
+                        'outgoing': bool(message.out),
+                        'sender_id': message.sender_id,
+                        'content': message.raw_text[:6000],
+                    })
+                return history_for_focus(rows, self.focus_sender_id)
+
+            async def preview_messages(self, peer_id):
+                if peer_id not in self.peers:
+                    raise AIError('Загрузите чаты и выберите группу')
+                messages = await self.client.get_messages(self.peers[peer_id], limit=50)
+                rows = []
+                names = {}
+                for message in reversed(list(messages)):
+                    if not message.raw_text or message.sender_id is None:
+                        continue
+                    sender = await message.get_sender()
+                    sender_id = int(message.sender_id)
+                    name = sender_label(sender, bool(message.out), str(sender_id))
+                    if not message.out:
+                        names[sender_id] = name
+                    rows.append({
+                        'id': int(message.id),
+                        'sender_id': sender_id,
+                        'name': name,
+                        'outgoing': bool(message.out),
+                        'text': message.raw_text[:500],
+                    })
+                self.preview_names = names
+                return rows[-50:]
+
             async def _incoming(self, event):
-                if not should_accept_incoming(self.target, event, self.peers):
+                if not should_accept_incoming(self.target, event, self.peers, self.focus_sender_id):
                     return
                 if self.on_message:
                     self.on_message(event.id)
@@ -117,7 +175,6 @@ def main() -> int:
                            'name': ' '.join(v for v in [me.first_name, me.last_name] if v) or str(me.id),
                            'username': me.username, 'avatar': None, 'avatar_warning': None}
                 try:
-                    # self only, no arbitrary usernames or external image URLs.
                     photo = await self.telegram.client.download_profile_photo(me, file=bytes, download_big=False)
                     if photo:
                         if not isinstance(photo, bytes) or len(photo) > 2_000_000 or not photo.startswith(b'\xff\xd8'):
@@ -135,8 +192,8 @@ def main() -> int:
                 except AuthFlowError as error:
                     raise AIError(str(error)) from None
                 except Exception as error:
-                    if operation in {'code', 'login', 'profile', 'chats', 'logout'} and not isinstance(error, AIError):
-                        raise AIError(safe_diagnostic(operation, error)) from None
+                    if operation in {'code', 'login', 'profile', 'chats', 'logout', 'select', 'focus'} and not isinstance(error, AIError):
+                        raise AIError(safe_diagnostic(operation if operation in {'code', 'login', 'profile', 'logout'} else 'status', error)) from None
                     raise
 
             async def _desktop_dispatch(self, operation, data):
@@ -151,12 +208,18 @@ def main() -> int:
                 if operation in {'prepare', 'start'} and not self.hotkeys_ok:
                     raise AIError('Глобальная остановка F9 недоступна. Запуск заблокирован.')
                 if operation == 'prepare':
+                    if data.get('mode') == 'ai' and self.target:
+                        entity = self.telegram.peers.get(self.target['id'])
+                        if entity and not is_private_user(entity) and not self.telegram.focus_sender_id:
+                            raise AIError('В группе нажмите на сообщение человека, которому отвечает AI.')
                     self.bind_chat = True
                     result = await super().dispatch(operation, data)
                     self.bind_chat = data.get('bind_chat', True)
+                    focused = self.telegram.focus_sender_name
+                    extra = (' Цель: ' + focused + '.') if focused else ''
                     self.notify('ready', 'Откройте целевое поле и нажмите F8. ' +
                                 ('Проверка чата включена.' if self.bind_chat else
-                                 'Привязка к чату выключена; получателя проверяете вы.'))
+                                 'Привязка к чату выключена; получателя проверяете вы.') + extra)
                     return result
                 if operation == 'start':
                     self.idle_only()
@@ -176,7 +239,7 @@ def main() -> int:
                         self.prepared = False
                         self.job = asyncio.create_task(self._run())
                     return {}
-                if operation in {'code', 'login', 'profile', 'logout', 'chats', 'save'}:
+                if operation in {'code', 'login', 'profile', 'logout', 'chats', 'save', 'focus'}:
                     self.idle_only()
                 if operation == 'code':
                     return await self.auth.request_code()
@@ -188,10 +251,25 @@ def main() -> int:
                     result = await self.auth.logout()
                     self.target, self.chat_list, self.prepared = None, [], False
                     self.profile_cache = None
+                    self.telegram.clear_focus()
                     return result
                 if operation == 'chats':
                     if not await self.auth.connect():
                         raise AIError('Сначала войдите в Telegram по коду и, если требуется, 2FA.')
+                if operation == 'focus':
+                    if not self.target:
+                        raise AIError('Сначала выберите группу.')
+                    entity = self.telegram.peers.get(self.target['id'])
+                    if is_private_user(entity):
+                        raise AIError('В личном чате собеседник уже выбран.')
+                    sender_id = int(data['sender_id'])
+                    name = self.telegram.preview_names.get(sender_id)
+                    if not name:
+                        raise AIError('Нажмите на входящее сообщение этого человека в списке.')
+                    self.telegram.focus_sender_id = sender_id
+                    self.telegram.focus_sender_name = name
+                    self.prepared = False
+                    return {'focus': {'id': sender_id, 'name': name}}
                 if operation == 'save' and self.telegram.client:
                     changed = (data.get('api_id', '') != self.store.config['api_id']
                                or data.get('phone', '') != self.store.config['phone']
@@ -202,8 +280,19 @@ def main() -> int:
                 result = await super().dispatch(operation, data)
                 if operation == 'logout':
                     self.profile_cache = None
+                    self.telegram.clear_focus()
                 if operation == 'select':
-                    return {'selected': self.target['id']}
+                    self.telegram.clear_focus()
+                    peer_id = self.target['id']
+                    entity = self.telegram.peers.get(peer_id)
+                    if is_private_user(entity):
+                        self.telegram.focus_sender_id = peer_id
+                        self.telegram.focus_sender_name = self.target['name']
+                        return {'selected': peer_id, 'kind': 'user',
+                                'focus': {'id': peer_id, 'name': self.target['name']},
+                                'messages': []}
+                    messages = await self.telegram.preview_messages(peer_id)
+                    return {'selected': peer_id, 'kind': 'group', 'focus': None, 'messages': messages}
                 return result
 
         root = Path(os.environ.get('APPDATA', str(Path.home()))) / 'TyperX'
