@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Activity,
+  Check,
   ChevronRight,
   CircleHelp,
   Command,
