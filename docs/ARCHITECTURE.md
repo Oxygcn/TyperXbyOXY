@@ -1,53 +1,101 @@
-# Архитектура
+# Архитектура TyperX Desktop
 
-React WebView → типизированный Tauri invoke → Rust → JSON Lines stdin/stdout
-→ упакованный Python adapter → реальный Runtime из TyperX backend.
+## 1. Назначение
 
-Исследован backend 1.2.0, commit dc013dfa7db7116e8907ef8086a939a7e2bdac37.
-app.run() только настраивает лог и возвращает 0. HTTP API и опубликованной
-JSON Schema нет. Схемы bridge/ — новый контракт адаптера, а не выдуманные
-существующие endpoint. Подкласс использует Runtime.submit/dispatch/stop/close,
-TelegramGateway.client и AIStore.public. Движок печати не переписан.
+Архитектура разделяет недоверенный UI, процессный контроль и привилегированный Windows-ввод. WebView не получает прямого доступа к shell, файловой системе, произвольному HTTP или запуску процессов. Все управляющие действия проходят через узкий Tauri IPC и локальный версионированный протокол.
 
-## Границы доверия
+## 2. Контекст системы
 
-- Нет Node.js, shell/fs/http/opener plugin в WebView. Только local main window.
-- Путь sidecar фиксирован Rust. Произвольные команды, аргументы и env не принимаются.
-- HWND передаёт Rust, не JavaScript. Команды start в IPC allowlist нет.
-- prepare требует ack_send; AI требует consent. F8 выполняет реальный запуск.
-- F9 обслуживается отдельным потоком backend. Кнопка stop обходит UI busy и
-  Runtime.request_lock. При отказе hotkeys адаптер блокирует запуск.
-- Запрос до 64 КиБ, ответ до 4 МБ, ограниченное число pending, ID и таймауты.
-  Неизвестный результат мутации никогда не повторяется автоматически.
-- При таймауте останавливается процесс. При закрытии — graceful shutdown,
-  ожидание до 14 сек, затем принудительное завершение. Windows Job Object
-  уничтожает потомков при падении оболочки. EOF закрывает адаптер.
-- Блокировка файла запрещает два sidecar одного профиля; сторонними движками
-  она не управляет. Принудительный kill не отменяет отправленное и требует
-  проверки черновика/состояния клавиш.
-- CSP без unsafe-eval. Ajv standalone генерируется на этапе build.
-  unsafe-inline разрешён только для style, нужного Motion/Radix/Recharts.
-- Динамических HTML-вставок нет. Аватар — только JPEG data URI до 2 МБ от get_me.
+```text
+Пользователь
+    │
+    ▼
+React 19 + TypeScript + Zustand
+    │ Tauri invoke / events
+    ▼
+Rust host (Tauri 2 + Tokio)
+    │ bounded JSON Lines over stdin/stdout
+    ▼
+Python adapter (PyInstaller sidecar)
+    │ typed calls / subclassing
+    ▼
+Pinned TyperX backend 1.2.0
+    ├── Telegram / Telethon
+    ├── LLM-compatible endpoint
+    ├── Windows UI Automation
+    └── Interception keyboard driver
+```
 
-## Telegram и данные
+Закреплённый backend: репозиторий и commit заданы в `backend.lock.json`. Локальная правка backend применяется `scripts/patch-backend.py` только после проверки ожидаемой ревизии и blob.
 
-profile вызывает get_me и download_profile_photo(me,file=bytes,download_big=False).
-Аватар не подменяется фото GitHub. При отсутствии/ошибке — нейтральная иконка.
-DPAPI и атомарное сохранение используют существующий AIStore. Public config
-возвращает только has_api_* вместо секретов. Пароль и код живут в памяти.
-Телефон и параметры сохраняются upstream в ai.json. telegram.session —
-НЕ DPAPI-encrypted: файл чувствителен и должен быть исключён из бэкапов.
+## 3. Компоненты
 
-Runtime select читает историю, но adapter не передаёт её в WebView. Передача
-истории LLM возможна только после consent/F8 в AI mode. Метрики — минутные
-счётчики текущего процесса; завершённый AI output, НЕ receipt доставки.
-Журнал — до 100 имён стадий в памяти. Нет логов сообщений, токенов и паролей.
+### 3.1 WebView
 
-Защита целевого окна основана на HWND, имени Telegram, заголовке чата и UIA.
-Это не криптографическое доказательство личности собеседника. Пользователь
-проверяет адресата, пустое поле и последствия Enter. Автовозобновления нет.
+`src/` содержит интерфейс и клиентские контракты. `src/lib/contracts.ts` определяет типы операций и snapshot. `src/lib/bridge.ts` вызывает только `backend_connect` и `backend_request`, а входящий snapshot проверяется сгенерированным Ajv standalone-валидатором. `src/store/app.ts` управляет состоянием подключения, синхронизацией и журналом до 100 смен стадий в памяти.
 
-## Не входит в проверенную поставку
+Browser-only режим предназначен для просмотра UI: управляющие операции в нём запрещены.
 
-Windows E2E, подпись установщика, auto-update/tray, Linux/macOS typing,
-Monkeytype UI, экспорт чатов. До выпуска нужны реальные locks и Windows QA.
+### 3.2 Rust host
+
+`src-tauri/src/lib.rs` публикует две команды только для окна `main`. `src-tauri/src/process.rs`:
+
+- выбирает фиксированный путь sidecar;
+- удаляет `PYTHONPATH` и `PYTHONHOME` из окружения дочернего процесса;
+- ограничивает request 64 KiB и response frame 4 MB;
+- ограничивает очередь ожидающих ответов;
+- применяет таймаут записи 2 секунды и ответа 65 секунд;
+- не повторяет автоматически операции с неизвестным результатом;
+- связывает процесс с Windows Job Object;
+- завершает sidecar при нарушении framing/JSON или закрытии приложения.
+
+### 3.3 Python adapter
+
+`bridge/typerx_desktop/` содержит:
+
+- `protocol.py` — envelope validation и телеметрия;
+- `__main__.py` — runtime, handshake, dispatch и Telegram gateway;
+- `auth.py` — code/2FA/logout и безопасные диагностические коды;
+- `guard.py` — привязка к HWND/PID/title/UIA field;
+- `typing_output.py` — нормализация, разбиение и последовательный ввод;
+- `keyboard.py` — lifecycle Interception keyboard;
+- `peers.py` — допустимые Telegram-цели и фильтрация истории.
+
+### 3.4 Upstream backend
+
+Adapter использует `Runtime`, `TelegramGateway`, `AIStore` и hotkeys upstream backend. Backend не копируется в Git: bootstrap клонирует точный commit в игнорируемую директорию `backend/`.
+
+## 4. Основные потоки
+
+### Подключение
+
+1. UI вызывает `backend_connect`.
+2. Rust запускает sidecar и получает событие `boot`.
+3. Rust отправляет `hello` с protocol version и HWND главного окна.
+4. Python регистрирует F8/F9 и отвечает подтверждением.
+5. Rust запрашивает `snapshot`; UI валидирует его JSON Schema.
+
+### Безопасный запуск
+
+1. Пользователь сохраняет настройки и выбирает режим/цель.
+2. `prepare` проверяет Enter acknowledgement, AI consent и параметры.
+3. Ввод не начинается через WebView.
+4. Пользователь переводит фокус в целевое поле и нажимает F8.
+5. Python захватывает target guard и запускает job.
+6. Перед каждой клавишей проверяются stop flag и окно; key-up выполняется даже при остановке.
+
+### Остановка
+
+F9 обрабатывается отдельным backend-потоком. UI-команда `stop` обходит флаг `busy`. Автовозобновления нет. Завершение процесса не гарантирует отмену уже обработанного Enter.
+
+## 5. Хранение и данные
+
+Публичный snapshot содержит конфигурацию без API key/hash, статус, список чатов, выбранную цель, профиль и агрегированные минутные счётчики. Код входа и 2FA-пароль существуют только в памяти текущего запроса. Telegram session-файл остаётся чувствительным локальным активом и не защищается DPAPI.
+
+## 6. Ограничения
+
+- контроль адресата основан на свойствах UI/окна, а не на криптографической идентичности;
+- целевая скорость WPM не является гарантированной измеренной скоростью;
+- `completed` означает завершённый локальный output callback, а не delivery receipt;
+- Windows, драйвер, Telegram и UI Automation требуют отдельной E2E-проверки;
+- установщик current-user не подписан и auto-update отсутствует.

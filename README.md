@@ -1,52 +1,58 @@
 # TyperX Desktop
 
-Tauri 2 + React/TypeScript интерфейс и stdio-адаптер к TyperX backend.
-**Исходники реализации. Не проверенный Windows-релиз и не готовый установщик.**
+TyperX Desktop — Windows-приложение на Tauri 2 для управляемого ввода подготовленного текста и AI-ответов в выбранный Telegram-диалог. Интерфейс реализован на React/TypeScript, процессная граница — на Rust, локальный движок — на Python и упаковывается PyInstaller.
 
-## Реализовано в коде
+> **Статус:** версия `0.1.0`, активная разработка. Репозиторий содержит исходный код и воспроизводимый процесс сборки, но не является подтверждённым production-релизом. Установщик не подписан; перед распространением обязательна Windows-проверка из [docs/TESTING.md](docs/TESTING.md).
 
-- Интерфейс по референсу: светлая полупрозрачная оболочка, тёмная карточка
-  состояния, монохромная навигация, адаптивность, Motion/reduced motion.
-- Обзор, ручной ввод и AI-студия, Telegram code/2FA/logout, фото собственного
-  аккаунта через get_me, выбор собеседника, настройки/пресеты, журнал.
-- Zustand; React Hook Form + Zod; build-time Ajv standalone; Recharts;
-  Tailwind 4, локальные shadcn-style компоненты Radix, Lucide, React strict TS.
-- Rust process lifecycle, IPC allowlist, bounded messages, stop вне busy-очереди,
-  Job Object, таймауты, отсутствие автоповтора и автоматического старта.
+## Возможности
 
-## Что пока НЕ завершено
+- ручной ввод текста с разбиением на группы по 1–16 слов;
+- AI-режим с Telegram-аутентификацией, выбором личного чата или участника группы;
+- явное подтверждение отправки через Enter и отдельное согласие на передачу контекста LLM-провайдеру;
+- глобальные клавиши F8 для подготовленного запуска и F9 для остановки;
+- контроль окна, процесса, заголовка и, когда доступно, UI Automation-поля;
+- строгий локальный JSON Lines-протокол между Rust и Python;
+- ограничение размеров сообщений, числа ожидающих запросов и времени операций;
+- хранение API-секретов через backend-хранилище с Windows DPAPI;
+- локальная телеметрия только по числу входящих событий и завершённых AI-выводов.
 
-Среда не имела Windows, Rust и доступа к npm/PyPI/Cargo. Прямые версии
-зависимостей зафиксированы. Backend закреплён commit в backend.lock.json.
-**Полные package-lock.json, Cargo.lock и requirements.lock не сгенерированы.**
-Не подложены вымышленные или частичные lockfiles. Требование полностью
-воспроизводимой сборки ещё не выполнено. Скрипт bootstrap создаёт настоящие
-locks на Windows с сетью; их нужно проверить и добавить в git.
+## Границы проекта
 
-`npm ci`, strict tsc, полноценный Vitest/Rust test, PyInstaller и Tauri build
-не выполнены. Нет гарантии сборки/интеграции без последующей Windows-проверки.
-Статус и smoke checklist: docs/VERIFICATION.md. Release блокируется без locks.
+TyperX не является Telegram-ботом и не отправляет сообщения через скрытый HTTP endpoint. Движок эмулирует клавиатурный ввод в выбранное пользователем поле и нажимает Enter. Это действие может немедленно отправить сообщение. Уже отправленный текст нельзя отозвать через приложение.
 
-## Первый запуск — Windows 10/11 x64
+Поддерживается только Windows 10/11 x64. Linux и macOS не поддерживаются. Автоматический перезапуск движка и автоматическое повторение операций намеренно отключены.
 
-Нужны Node 22.18+ (<25), Python 3.12 x64, Git, Rust stable MSVC,
-Visual Studio Build Tools (Desktop development with C++) и WebView2.
-Interception устанавливается отдельно через официальный installer backend
-с правами администратора и перезагрузкой. Приложение не устанавливает драйвер
-и не повышает права автоматически.
+## Быстрый старт
 
-PowerShell из корня:
+### Требования
+
+- Windows 10/11 x64;
+- Node.js `>=22.12 <25`;
+- Python 3.12 x64;
+- Rust stable, совместимый с `rust-version = 1.85`;
+- Visual Studio Build Tools с workload **Desktop development with C++**;
+- Git и Microsoft Edge WebView2;
+- установленный отдельно Interception driver.
+
+### Подготовка
+
+Откройте PowerShell в корне репозитория:
 
 ```powershell
 ./scripts/bootstrap.ps1
-# Проверить/закоммитить созданные package-lock.json, Cargo.lock, requirements.lock.
 ./scripts/build-engine.ps1
 npm run desktop:dev
 ```
 
-Bootstrap скачивает immutable backend commit и применяет точечный patch
-четырёх незакавыченных Unicode-ключей в ai_runtime.py. Patch проверяет commit
-и blob и отказывается менять неизвестную ревизию.
+`bootstrap.ps1` создаёт `.venv`, устанавливает Python-зависимости по hash-locked файлу, извлекает закреплённый backend commit, создаёт lock-файлы Node/Rust и устанавливает зависимости. `build-engine.ps1` собирает sidecar в:
+
+```text
+src-tauri/binaries/typerx-engine-x86_64-pc-windows-msvc.exe
+```
+
+После любого изменения в `bridge/`, `backend.lock.json` или Python-зависимостях движок необходимо пересобрать.
+
+## Проверка перед работой
 
 ```powershell
 node scripts/check-locks.mjs
@@ -55,31 +61,23 @@ npm run test
 npm run build
 .venv/Scripts/python.exe -m unittest discover -s tests -p "test_*.py" -v
 cargo test --locked --manifest-path src-tauri/Cargo.toml
-npm run desktop:build
+npm run desktop:build -- --no-bundle
 ```
 
-После успешной сборки NSIS: src-tauri/target/release/bundle/nsis/.
-Установщик unsigned. В архиве нет exe, Python runtime или секретов.
-`npm run dev` открывает только browser-view, где управление честно отключено.
+Первый ввод выполняйте только в пустом локальном тестовом документе. До проверки F8/F9, переключения окна и отпускания клавиш не используйте настоящий чат.
 
-## Подключение и безопасность
+## Документация
 
-1. Подключите движок. В Настройках сохраните Telegram api_id/api_hash/телефон.
-2. Во вкладке Telegram войдите по коду и 2FA. Сохранённая сессия подключается
-   кнопкой «Загрузить чаты». Фото берётся только у авторизованного get_me.
-3. Настройте модель/пресет и выберите личный чат. AI требует отдельного согласия
-   на передачу до 50 сообщений выбранному LLM-провайдеру.
-4. Подтвердите последствия Enter, подготовьте запуск. Перейдите в нужное поле
-   и нажмите F8. В WebView команды прямого запуска нет.
-5. F9 останавливает независимо от UI busy. Смена фокуса останавливает ввод.
-   Автовозобновления нет. Уже отправленные сообщения не отзываются.
+- [Обзор документации](docs/README.md)
+- [Архитектура](docs/ARCHITECTURE.md)
+- [Среда разработки и сборка](docs/DEVELOPMENT.md)
+- [Локальный протокол](docs/PROTOCOL.md)
+- [Модель безопасности](docs/SECURITY.md)
+- [Эксплуатация и диагностика](docs/OPERATIONS.md)
+- [Тестирование и критерии выпуска](docs/TESTING.md)
+- [Правила участия](CONTRIBUTING.md)
+- [Политика раскрытия уязвимостей](SECURITY.md)
 
-Сначала тестируйте ручной ввод в пустом локальном документе. Затем — только
-в согласованном тестовом Telegram-чате. Движок нажимает Enter после фрагментов:
-это НЕ dry-run. Проверьте текст и черновик перед каждым новым запуском.
+## Лицензия
 
-API-секреты хранятся backend через Windows DPAPI. Telegram SQLite session
-НЕ зашифрована DPAPI; не публикуйте и не копируйте её в облачные бэкапы.
-Коды, пароль 2FA, сообщения и аватар не пишутся в журнал UI или localStorage.
-
-Подробнее: docs/ARCHITECTURE.md.
+Проект распространяется по лицензии [MIT](LICENSE). Лицензия не заменяет проверку условий использования Telegram, LLM-провайдера, Interception driver и сторонних зависимостей.
