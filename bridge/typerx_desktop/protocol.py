@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 MAX_REQUEST = 65_536
 MAX_RESPONSE = 4_000_000
@@ -14,6 +15,41 @@ ALLOWED = frozenset({'snapshot', 'save', 'code', 'login', 'logout', 'chats',
 
 class ProtocolError(ValueError):
     pass
+
+
+class MinuteCounters:
+    """Rolling 60-minute incoming/completed counters for snapshot telemetry."""
+
+    WINDOW = 60
+
+    def __init__(self, clock: Callable[[], float] = time.time):
+        self._clock = clock
+        self._counts: dict[int, dict[str, int]] = {}
+
+    def _minute(self) -> int:
+        return int(self._clock() // 60)
+
+    def add(self, name: str) -> None:
+        minute = self._minute()
+        bucket = self._counts.setdefault(minute, {'incoming': 0, 'completed': 0})
+        if name in bucket:
+            bucket[name] += 1
+
+    def snapshot(self) -> list[dict[str, int]]:
+        now = self._minute()
+        start = now - (self.WINDOW - 1)
+        for key in [key for key in self._counts if key < start]:
+            del self._counts[key]
+        rows = []
+        empty = {'incoming': 0, 'completed': 0}
+        for minute in range(start, now + 1):
+            bucket = self._counts.get(minute, empty)
+            rows.append({
+                'minute': minute,
+                'incoming': bucket['incoming'],
+                'completed': bucket['completed'],
+            })
+        return rows
 
 
 def text(value: Any, limit: int) -> bool:
