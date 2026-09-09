@@ -40,7 +40,7 @@ async fn backend_connect(app: tauri::AppHandle, window: tauri::WebviewWindow,
 async fn backend_request(window: tauri::WebviewWindow, state: State<'_, Desktop>,
                          operation: String, data: Value) -> Result<Value, String> {
     const ALLOWED: &[&str] = &["snapshot","save","code","login","logout","chats",
-                            "select","test","prepare","stop","profile"];
+                            "select","focus","test","prepare","stop","profile"];
     if window.label() != "main" || !ALLOWED.contains(&operation.as_str()) || !data.is_object() {
         return Err("Операция запрещена".into());
     }
