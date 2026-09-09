@@ -13,6 +13,7 @@ from pathlib import Path
 from .auth import AuthController, AuthFlowError, safe_diagnostic
 from .typing_output import driver_output, TypingInputError, TypingStopped
 from .guard import capture_guard
+from .peers import can_reply_to_dialog, should_accept_incoming
 
 from .protocol import MAX_REQUEST, MAX_RESPONSE, MinuteCounters, ProtocolError, parse_request
 
@@ -50,9 +51,28 @@ def main() -> int:
         emit({'event': 'fatal', 'error': 'Backend TyperX поддерживает только Windows 10/11.'})
         return 1
     try:
-        from typerx.ai import AIError
+        from typerx.ai import AIError, TelegramGateway
         from typerx.ai_runtime import Runtime
         from typerx.studio_hotkeys import GlobalHotkeys
+
+        class DesktopGateway(TelegramGateway):
+            async def chats(self):
+                if not await self.connect():
+                    raise AIError('Сначала войдите в Telegram')
+                from telethon import utils
+                result = []
+                async for dialog in self.client.iter_dialogs():
+                    self.peers[dialog.id] = dialog.entity
+                    result.append({'id': dialog.id, 'name': dialog.name or str(dialog.id),
+                                   'can_reply': can_reply_to_dialog(dialog),
+                                   'peer_id': utils.get_peer_id(dialog.entity)})
+                return result
+
+            async def _incoming(self, event):
+                if not should_accept_incoming(self.target, event, self.peers):
+                    return
+                if self.on_message:
+                    self.on_message(event.id)
 
         class DesktopRuntime(Runtime):
             def __init__(self, root, callback):
@@ -61,6 +81,7 @@ def main() -> int:
                 self.hotkeys_ok = False
                 self.bind_chat = True
                 super().__init__(root, callback)
+                self.telegram = DesktopGateway(self.store, self.notify)
                 self.auth = AuthController(self.telegram, self.store)
                 self.detail = "Движок chat-binding-3 · подготовьте безопасный запуск"
 
@@ -176,20 +197,16 @@ def main() -> int:
                                or data.get('phone', '') != self.store.config['phone']
                                or bool(data.get('api_hash')))
                     if changed and not await self.auth.call('status', self.telegram.client.is_user_authorized()):
-                        # A failed login must not lock editing of wrong credentials.
-                        # Disconnect only; do not remove or revoke the session.
                         await self.auth.call('status', self.telegram.close(logout=False))
                         self.auth.reset()
                 result = await super().dispatch(operation, data)
                 if operation == 'logout':
                     self.profile_cache = None
-                # Never return chat history to the WebView for a selection operation.
                 if operation == 'select':
                     return {'selected': self.target['id']}
                 return result
 
         root = Path(os.environ.get('APPDATA', str(Path.home()))) / 'TyperX'
-        # One sidecar per Windows profile; OS releases this lock after a crash.
         import msvcrt
         root.mkdir(parents=True, exist_ok=True)
         instance_lock = open(root / 'desktop.lock', 'a+b')
@@ -226,13 +243,11 @@ def main() -> int:
             try:
                 request = parse_request(line)
             except (ProtocolError, TypeError):
-                # Invalid or oversized frames terminate the process, never echo input.
                 runtime.stop()
                 emit({'event': 'fatal', 'error': 'Нарушен локальный протокол. Движок остановлен.'})
                 break
             rid, operation, data = request['id'], request['operation'], request['data']
             if operation in {'stop', 'shutdown'}:
-                # Direct call from reader thread. No request_lock, network queue or await.
                 runtime.stop()
                 emit({'id': rid, 'ok': True, 'data': {}})
                 if operation == 'shutdown':
@@ -250,9 +265,7 @@ def main() -> int:
             elif not handshake:
                 emit({'id': rid, 'ok': False, 'error': 'Сначала выполните инициализацию'})
             else:
-                # One ordered request queue. Validation occurs before dispatch.
                 runtime.submit(rid, operation, data)
-                # Credentials exist transiently in the request; never print them.
                 request = None
     except Exception:
         emit({'event': 'fatal', 'error': 'Не удалось запустить Python-движок. Проверьте сборку и зависимости.'})
