@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { connect, isDesktop, parseSnapshot, request } from "../lib/bridge";
 import { stageLabels, type Operation, type Snapshot } from "../lib/contracts";
-export type Page = "overview" | "studio" | "telegram" | "settings" | "journal";
+export type Page =
+  | "overview"
+  | "studio"
+  | "telegram"
+  | "monkeytype"
+  | "settings"
+  | "journal";
 type Entry = { id: number; time: string; detail: string };
 type State = {
   page: Page;
