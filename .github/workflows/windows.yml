@@ -1,0 +1,35 @@
+name: Windows verification
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: node scripts/check-locks.mjs
+      - run: npm ci
+      - run: npm run test
+      - run: npm run build
+      - name: Prepare pinned backend
+        shell: pwsh
+        run: |
+          py -3.12 -m venv .venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $lock = Get-Content backend.lock.json | ConvertFrom-Json
+          git clone --no-checkout $lock.repository backend
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C backend checkout --detach $lock.commit
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/build-engine.ps1
+      - run: .venv/Scripts/python.exe -m unittest discover -s tests -p "test_*.py" -v
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - run: npm run desktop:build -- --no-bundle

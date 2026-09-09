@@ -1,0 +1,7 @@
+# Exact direct build/runtime pins. Full hash-locked resolution requires network.
+pyinstaller==6.15.0
+jsonschema==4.25.1
+interception-python==1.13.6
+pywin32==311
+pywinauto==0.6.9
+telethon==1.40.0

@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-backend"
+description = "Only typed TyperX requests to the app-owned Python process."
+commands.allow = ["backend_connect", "backend_request"]

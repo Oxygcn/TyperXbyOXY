@@ -1,0 +1,277 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "config",
+    "stage",
+    "detail",
+    "prepared",
+    "active",
+    "chats",
+    "target",
+    "profile",
+    "hotkeys",
+    "telemetry"
+  ],
+  "properties": {
+    "protocol": {
+      "const": 1
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "api_id",
+        "phone",
+        "base_url",
+        "model",
+        "wpm",
+        "words",
+        "active_preset",
+        "presets",
+        "has_api_key",
+        "has_api_hash",
+        "warning"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "api_id": {
+          "type": "string",
+          "maxLength": 20,
+          "pattern": "^[0-9]*$"
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "base_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "wpm": {
+          "type": "integer",
+          "minimum": 25,
+          "maximum": 300
+        },
+        "words": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "active_preset": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "presets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "prompts"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "prompts": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 8,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 6000
+                }
+              }
+            }
+          }
+        },
+        "has_api_key": {
+          "type": "boolean"
+        },
+        "has_api_hash": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      }
+    },
+    "stage": {
+      "enum": [
+        "idle",
+        "ready",
+        "listening",
+        "incoming",
+        "thinking",
+        "typing",
+        "error"
+      ]
+    },
+    "detail": {
+      "type": "string"
+    },
+    "prepared": {
+      "type": "boolean"
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "chats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "can_reply",
+          "peer_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "can_reply": {
+            "type": "boolean"
+          },
+          "peer_id": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "target": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "can_reply",
+            "peer_id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "can_reply": {
+              "type": "boolean"
+            },
+            "peer_id": {
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "profile": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "name",
+            "username",
+            "avatar",
+            "avatar_warning"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "username": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "avatar": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 2800000,
+              "pattern": "^data:image/jpeg;base64,[A-Za-z0-9+/=]+$"
+            },
+            "avatar_warning": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "hotkeys": {
+      "type": "boolean"
+    },
+    "telemetry": {
+      "type": "array",
+      "maxItems": 60,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "minute",
+          "incoming",
+          "completed"
+        ],
+        "properties": {
+          "minute": {
+            "type": "integer"
+          },
+          "incoming": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"main":{"identifier":"main","description":"Local main window only. No shell, filesystem, HTTP, opener or remote capabilities.","local":true,"windows":["main"],"permissions":["core:event:allow-listen","core:event:allow-unlisten","allow-backend"]}}

@@ -1,0 +1,5 @@
+src/generated/
+backend/
+dist/
+build/
+node_modules/

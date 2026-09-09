@@ -1,0 +1,15 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/binaries/*.exe
+.venv/
+backend/
+__pycache__/
+.pytest_cache/
+*.session*
+ai-secrets.bin
+ai.json
+.env*
+!.env.example
+build/
+*.log

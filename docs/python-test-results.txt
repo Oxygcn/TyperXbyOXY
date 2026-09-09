@@ -1,0 +1,17 @@
+test_ai_consent (test_protocol.ProtocolTests.test_ai_consent) ... ok
+test_counters (test_protocol.ProtocolTests.test_counters) ... ok
+test_credentials (test_protocol.ProtocolTests.test_credentials) ... ok
+test_frames (test_protocol.ProtocolTests.test_frames) ... ok
+test_handshake (test_protocol.ProtocolTests.test_handshake) ... ok
+test_ids (test_protocol.ProtocolTests.test_ids) ... ok
+test_manual_ack (test_protocol.ProtocolTests.test_manual_ack) ... ok
+test_no_start_or_exec (test_protocol.ProtocolTests.test_no_start_or_exec) ... ok
+test_nonfinite (test_protocol.ProtocolTests.test_nonfinite) ... ok
+test_nonwindows (test_protocol.ProtocolTests.test_nonwindows) ... ok
+test_secret_not_echoed (test_protocol.ProtocolTests.test_secret_not_echoed) ... ok
+test_stop (test_protocol.ProtocolTests.test_stop) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.036s
+
+OK
