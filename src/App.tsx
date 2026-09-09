@@ -81,7 +81,7 @@ const titles: Record<
   telegram: {
     eyebrow: "ПОДКЛЮЧЕНИЯ",
     title: "Ваш Telegram",
-    description: "Только ваш аккаунт. Только выбранный собеседник.",
+    description: "Только ваш аккаунт. Выбранный личный чат или группа.",
   },
   settings: {
     eyebrow: "ПАРАМЕТРЫ ДВИЖКА",
@@ -666,7 +666,7 @@ function Overview() {
             <span>
               {v?.target
                 ? `Выбран чат: ${v.target.name}`
-                : "Собеседник не выбран"}
+                : "Чат не выбран"}
             </span>
             <Button
               variant="outline"
@@ -750,12 +750,12 @@ function Studio() {
               </span>
               <h2>Ответы в вашем стиле</h2>
               <p>
-                TyperX реагирует только на новые сообщения выбранного
-                собеседника. Старые сообщения сами по себе не запускают ответ.
+                TyperX реагирует только на новые сообщения выбранного чата
+                или группы. Старые сообщения сами по себе не запускают ответ.
               </p>
             </div>
             <div className="detail-row">
-              <span>Собеседник</span>
+              <span>Чат</span>
               <strong>{v?.target?.name ?? "Не выбран"}</strong>
             </div>
             <div className="detail-row">
@@ -774,7 +774,7 @@ function Studio() {
               onClick={() => s.navigate("telegram")}
               disabled={locked}
             >
-              Выбрать собеседника
+              Выбрать чат
               <ArrowRight size={16} />
             </Button>
             <label className="consent">
@@ -812,7 +812,7 @@ function Studio() {
           </p>
           {!bindChat && mode === "ai" && (
             <p className="field-hint">
-              AI продолжит получать сообщения и историю выбранного собеседника,
+              AI продолжит получать сообщения и историю выбранного чата,
               но может напечатать ответ в другом чате или приложении.
               Проверьте получателя самостоятельно.
             </p>
@@ -1051,7 +1051,7 @@ function Telegram() {
       <article className="card chat-panel">
         <div className="card-heading">
           <h2>
-            Собеседники{" "}
+            Чаты{" "}
             <span className="count-badge">{v?.chats.length ?? 0}</span>
           </h2>
           <Button
@@ -1066,15 +1066,15 @@ function Telegram() {
         <label className="search-field">
           <Search size={17} />
           <input
-            aria-label="Поиск собеседника"
-            placeholder="Найти собеседника"
+            aria-label="Поиск чата"
+            placeholder="Найти чат или группу"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
         <p className="field-hint">
-          AI-ответы доступны только в личном чате с человеком, не с ботом и не в
-          группе.
+          AI-ответы доступны в личных чатах и группах. Каналы и боты недоступны.
+          В группе ответ запускается на каждое новое текстовое сообщение.
         </p>
         <div className="chat-list">
           {v?.chats.length ? (
@@ -1095,7 +1095,7 @@ function Telegram() {
                   <span>
                     <strong>{c.name}</strong>
                     <small>
-                      {c.can_reply ? "Личный чат" : "AI-ответы недоступны"}
+                      {c.can_reply ? "Можно выбрать для AI" : "Канал, бот или недоступно"}
                     </small>
                   </span>
                   {v.target?.id === c.id ? (
@@ -1106,7 +1106,7 @@ function Telegram() {
                 </button>
               ))
           ) : (
-            <Empty icon={MessageCircle} title="Пока нет собеседников">
+            <Empty icon={MessageCircle} title="Пока нет чатов">
               Войдите или подключите сохранённую сессию, затем загрузите список
               чатов.
             </Empty>
