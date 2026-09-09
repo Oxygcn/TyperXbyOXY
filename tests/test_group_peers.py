@@ -1,6 +1,9 @@
+import sys
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "bridge"))
 from typerx_desktop.peers import can_reply_to_dialog, should_accept_incoming
 
 
