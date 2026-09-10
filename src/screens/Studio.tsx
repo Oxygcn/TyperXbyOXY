@@ -3,6 +3,7 @@ import * as Tabs from "@radix-ui/react-tabs";
 import {
   ArrowRight,
   Keyboard,
+  RadioTower,
   ShieldCheck,
   Square,
   Zap,
@@ -31,14 +32,15 @@ export function Studio() {
   }, [mode, v?.target?.id, v?.config.base_url, bindChat]);
   const locked =
     s.busy || s.connection !== "connected" || !!v?.active || !!v?.prepared;
+  const liveReady = !!v?.config.live_enabled && !!v.config.live_calibrated;
   const prepare = () =>
     void s
       .run("prepare", {
         mode,
-        text: mode === "manual" ? text : undefined,
-        consent,
-        ack_send: sendAck,
-        bind_chat: bindChat,
+        text: mode === "manual" || mode === "live" ? text : undefined,
+        consent: mode === "ai" ? consent : undefined,
+        ack_send: mode === "live" ? undefined : sendAck,
+        bind_chat: mode === "live" ? false : bindChat,
       })
       .catch(ignored);
   return (
@@ -47,7 +49,7 @@ export function Studio() {
         <Tabs.Root
           value={mode}
           onValueChange={(val) => {
-            if (!locked) setMode(val as "manual" | "ai");
+            if (!locked) setMode(val as "manual" | "live" | "ai");
           }}
         >
           <Tabs.List className="tabs-list" aria-label="Режим ввода">
@@ -55,28 +57,59 @@ export function Studio() {
               <Keyboard size={16} />
               Мой текст
             </Tabs.Trigger>
+            <Tabs.Trigger value="live" disabled={locked}>
+              <RadioTower size={16} />
+              Живая печать
+            </Tabs.Trigger>
             <Tabs.Trigger value="ai" disabled={locked}>
               <Zap size={16} />
               AI-ответы
             </Tabs.Trigger>
           </Tabs.List>
           <Tabs.Content value="manual">
-            <div className="editor-heading">
-              <h2>Что будем печатать?</h2>
-              <span>{text.length.toLocaleString("ru-RU")} / 8 000</span>
-            </div>
-            <textarea
-              className="text-editor"
-              aria-label="Текст для печати"
-              placeholder="Введите текст. TyperX напечатает его в выбранном окне с естественным ритмом…"
-              value={text}
-              maxLength={8000}
-              disabled={locked}
-              onChange={(e) => setText(e.target.value)}
+            <TextEditor
+              text={text}
+              setText={setText}
+              locked={locked}
+              placeholder="Введите текст. TyperX напечатает его в выбранном окне с заданным ритмом…"
             />
             <p className="field-hint">
               Буфер хранится только в памяти интерфейса. Переносы и управляющие
               символы нормализуются движком.
+            </p>
+          </Tabs.Content>
+          <Tabs.Content value="live">
+            <TextEditor
+              text={text}
+              setText={setText}
+              locked={locked}
+              placeholder="Введите подготовленный текст. После F8 каждое обычное нажатие выдаст следующий символ…"
+            />
+            <div
+              role="status"
+              className={`notice-banner ${liveReady ? "success-banner" : ""}`}
+            >
+              <RadioTower size={18} />
+              <span>
+                {liveReady
+                  ? `Режим готов: ${v?.config.live_device ?? "клавиатура откалибрована"}.`
+                  : "Сначала откалибруйте клавиатуру и включите режим в Настройки → Прочее."}
+              </span>
+            </div>
+            {!liveReady && (
+              <Button
+                variant="outline"
+                onClick={() => s.navigate("settings")}
+                disabled={locked}
+              >
+                Открыть настройки
+                <ArrowRight size={16} />
+              </Button>
+            )}
+            <p className="field-hint">
+              Enter, Backspace, Tab, функциональные клавиши и сочетания с
+              Ctrl/Alt/Win проходят без подмены и не двигают текст. Скорость
+              задаётся только вашими физическими нажатиями.
             </p>
           </Tabs.Content>
           <Tabs.Content value="ai">
@@ -132,46 +165,61 @@ export function Studio() {
           </Tabs.Content>
         </Tabs.Root>
         <div className="editor-footer">
-          <label className="consent">
-            <input
-              type="checkbox"
-              checked={bindChat}
-              disabled={locked}
-              onChange={(event) => setBindChat(event.target.checked)}
-              aria-describedby="chat-binding-description"
-            />
-            <span>Проверять чат назначения</span>
-          </label>
-          <p id="chat-binding-description" className="field-hint" role="status">
-            {bindChat
-              ? "Включено: проверяются заголовок и привязка к чату."
-              : "Выключено: название чата и заголовок не проверяются. Ввод — в окно, выбранное через F8. Не переключайте чат внутри этого окна."}
-          </p>
-          {!bindChat && mode === "ai" && (
+          {mode !== "live" && (
+            <>
+              <label className="consent">
+                <input
+                  type="checkbox"
+                  checked={bindChat}
+                  disabled={locked}
+                  onChange={(event) => setBindChat(event.target.checked)}
+                  aria-describedby="chat-binding-description"
+                />
+                <span>Проверять чат назначения</span>
+              </label>
+              <p
+                id="chat-binding-description"
+                className="field-hint"
+                role="status"
+              >
+                {bindChat
+                  ? "Включено: проверяются заголовок и привязка к чату."
+                  : "Выключено: название чата и заголовок не проверяются. Ввод — в окно, выбранное через F8. Не переключайте чат внутри этого окна."}
+              </p>
+              {!bindChat && mode === "ai" && (
+                <p className="field-hint">
+                  AI продолжит получать сообщения выбранной цели, но может
+                  напечатать ответ в другом чате. Проверьте получателя сами.
+                </p>
+              )}
+              <label className="consent">
+                <input
+                  type="checkbox"
+                  checked={sendAck}
+                  disabled={locked}
+                  onChange={(e) => setSendAck(e.target.checked)}
+                />
+                <span>
+                  Понимаю: движок нажимает <strong>Enter</strong> после каждого
+                  фрагмента. Это может отправлять сообщения.
+                </span>
+              </label>
+            </>
+          )}
+          {mode === "live" && (
             <p className="field-hint">
-              AI продолжит получать сообщения выбранной цели, но может
-              напечатать ответ в другом чате. Проверьте получателя сами.
+              В живом режиме движок никогда не генерирует Enter. Отправка
+              выполняется только вашим отдельным физическим нажатием.
             </p>
           )}
-          <label className="consent">
-            <input
-              type="checkbox"
-              checked={sendAck}
-              disabled={locked}
-              onChange={(e) => setSendAck(e.target.checked)}
-            />
-            <span>
-              Понимаю: движок нажимает <strong>Enter</strong> после каждого
-              фрагмента. Это может отправлять сообщения.
-            </span>
-          </label>
           <Button
             disabled={
               locked ||
-              !sendAck ||
               (mode === "manual"
-                ? !text.trim()
-                : !consent || !v?.target?.can_reply || !v.profile)
+                ? !sendAck || !text.trim()
+                : mode === "live"
+                  ? !liveReady || !text.trim()
+                  : !sendAck || !consent || !v?.target?.can_reply || !v.profile)
             }
             onClick={prepare}
           >
@@ -225,5 +273,35 @@ export function Studio() {
         </div>
       </div>
     </div>
+  );
+}
+
+function TextEditor({
+  text,
+  setText,
+  locked,
+  placeholder,
+}: {
+  text: string;
+  setText: (value: string) => void;
+  locked: boolean;
+  placeholder: string;
+}) {
+  return (
+    <>
+      <div className="editor-heading">
+        <h2>Что будем печатать?</h2>
+        <span>{text.length.toLocaleString("ru-RU")} / 8 000</span>
+      </div>
+      <textarea
+        className="text-editor"
+        aria-label="Текст для печати"
+        placeholder={placeholder}
+        value={text}
+        maxLength={8000}
+        disabled={locked}
+        onChange={(event) => setText(event.target.value)}
+      />
+    </>
   );
 }

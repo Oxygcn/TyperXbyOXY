@@ -8,6 +8,9 @@ export type Config = {
   model: string;
   wpm: number;
   words: number;
+  live_enabled: boolean;
+  live_calibrated: boolean;
+  live_device: string | null;
   active_preset: string;
   presets: Preset[];
   has_api_key: boolean;
@@ -54,7 +57,7 @@ export type Profile = {
 export type Stage =
   "idle" | "ready" | "listening" | "incoming" | "thinking" | "typing" | "error";
 export type Snapshot = {
-  protocol: 1;
+  protocol: 2;
   config: Config;
   stage: Stage;
   detail: string;
@@ -77,6 +80,7 @@ export type Operation =
   | "focus"
   | "test"
   | "prepare"
+  | "calibrate"
   | "stop"
   | "profile";
 export const stageLabels: Record<Stage, string> = {
@@ -88,15 +92,12 @@ export const stageLabels: Record<Stage, string> = {
   typing: "Печать",
   error: "Ошибка движка",
 };
-export const loginResult = z.object({
-  authorized: z.boolean().optional(),
-  code_sent: z.boolean().optional(),
-  password_needed: z.boolean().optional(),
-});
 export function publicToEditable(c: Config) {
   const {
     has_api_key: _key,
     has_api_hash: _hash,
+    live_calibrated: _calibrated,
+    live_device: _device,
     warning: _warning,
     ...rest
   } = c;
@@ -106,47 +107,32 @@ export const settingsSchema = z
   .object({
     api_id: z.string().regex(/^\d*$/, "Только цифры").max(20),
     phone: z.string().max(40),
-    api_hash: z
-      .string()
-      .max(128)
-      .refine(
-        (s) => !s || /^[a-fA-F0-9]{32}$/.test(s),
-        "api_hash: 32 шестнадцатеричных символа",
-      ),
+    api_hash: z.string().max(128).refine(
+      (s) => !s || /^[a-fA-F0-9]{32}$/.test(s),
+      "api_hash: 32 шестнадцатеричных символа",
+    ),
     api_key: z.string().max(2048),
-    base_url: z
-      .url()
-      .max(500)
-      .refine((s) => {
-        try {
-          const u = new URL(s);
-          return (
-            !u.username &&
-            !u.password &&
-            !u.search &&
-            !u.hash &&
-            (u.protocol === "https:" ||
-              (u.protocol === "http:" &&
-                ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)))
-          );
-        } catch {
-          return false;
-        }
-      }, "HTTPS обязателен; HTTP — только localhost"),
+    base_url: z.url().max(500).refine((s) => {
+      try {
+        const u = new URL(s);
+        return !u.username && !u.password && !u.search && !u.hash &&
+          (u.protocol === "https:" ||
+            (u.protocol === "http:" &&
+              ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)));
+      } catch {
+        return false;
+      }
+    }, "HTTPS обязателен; HTTP — только localhost"),
     model: z.string().max(120),
     wpm: z.number().int().min(25).max(300),
     words: z.number().int().min(1).max(16),
+    live_enabled: z.boolean(),
     active_preset: z.string().min(1),
-    presets: z
-      .array(
-        z.object({
-          id: z.string().min(1).max(80),
-          name: z.string().trim().min(1).max(80),
-          prompts: z.array(z.string().trim().min(1).max(6000)).min(1).max(8),
-        }),
-      )
-      .min(1)
-      .max(30),
+    presets: z.array(z.object({
+      id: z.string().min(1).max(80),
+      name: z.string().trim().min(1).max(80),
+      prompts: z.array(z.string().trim().min(1).max(6000)).min(1).max(8),
+    })).min(1).max(30),
   })
   .refine(
     (v) => v.presets.some((p) => p.id === v.active_preset),

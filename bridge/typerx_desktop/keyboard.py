@@ -8,11 +8,20 @@ from .typing_output import TypingInputError
 
 
 class DesktopKeyboard(InterceptionKeyboard):
-    def __init__(self, target_window):
+    def __init__(self, target_window, *, context=None, keyboard=None):
         self._down = set()
         self._closed = False
+        self._owns_context = context is None
         try:
-            super().__init__(target_window)
+            if context is None:
+                super().__init__(target_window)
+            else:
+                if keyboard is None:
+                    raise ValueError("Shared Interception context requires a keyboard device")
+                self.target_window = target_window
+                self._context = context
+                self._keyboard = keyboard
+                self._held_modifiers = {}
         except Exception:
             self.close()
             raise
@@ -49,7 +58,6 @@ class DesktopKeyboard(InterceptionKeyboard):
     def _send(self, scan, flags, key_up=False):
         token = (scan, flags)
         if not key_up:
-            # Track before send: an exception cannot prove the OS saw no key-down.
             self._down.add(token)
         super()._send(scan, flags, key_up)
         if key_up:
@@ -62,14 +70,13 @@ class DesktopKeyboard(InterceptionKeyboard):
         failure = False
         for scan, flags in tuple(getattr(self, '_down', ())):
             try:
-                # Bypass focus guards for key-up cleanup.
                 super()._send(scan, flags, True)
             except Exception:
                 failure = True
         self._down.clear()
         if hasattr(self, '_held_modifiers'):
             self._held_modifiers.clear()
-        if hasattr(self, '_context'):
+        if self._owns_context and hasattr(self, '_context'):
             try:
                 super().close()
             except Exception:

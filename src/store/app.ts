@@ -2,21 +2,17 @@ import { create } from "zustand";
 import { connect, isDesktop, parseSnapshot, request } from "../lib/bridge";
 import { stageLabels, type Operation, type Snapshot } from "../lib/contracts";
 export type Page =
-  | "overview"
-  | "studio"
-  | "telegram"
-  | "monkeytype"
-  | "settings"
-  | "journal";
+  "overview" | "studio" | "telegram" | "monkeytype" | "settings" | "journal";
 type Entry = { id: number; time: string; detail: string };
+type InputMode = "manual" | "live" | "ai";
 type State = {
   page: Page;
   draft: string;
   bindChat: boolean;
   setBindChat: (value: boolean) => void;
-  mode: "manual" | "ai";
+  mode: InputMode;
   setDraft: (draft: string) => void;
-  setMode: (mode: "manual" | "ai") => void;
+  setMode: (mode: InputMode) => void;
   connection: "browser" | "disconnected" | "connecting" | "connected" | "error";
   snapshot: Snapshot | null;
   busy: boolean;
@@ -26,22 +22,13 @@ type State = {
   navigate: (page: Page) => void;
   init: () => Promise<void>;
   sync: () => Promise<void>;
-  run: (
-    operation: Operation,
-    data?: Record<string, unknown>,
-  ) => Promise<unknown>;
+  run: (operation: Operation, data?: Record<string, unknown>) => Promise<unknown>;
   stop: () => Promise<void>;
   disconnected: () => void;
   dismiss: () => void;
 };
-let syncing = false,
-  sequence = 0;
-const message = (e: unknown) =>
-  typeof e === "string"
-    ? e
-    : e instanceof Error
-      ? e.message
-      : "Операция не выполнена";
+let syncing = false, sequence = 0;
+const message = (e: unknown) => typeof e === "string" ? e : e instanceof Error ? e.message : "Операция не выполнена";
 export const useApp = create<State>((set, get) => ({
   page: "overview",
   draft: "",
@@ -58,14 +45,12 @@ export const useApp = create<State>((set, get) => ({
   entries: [],
   navigate: (page) => set({ page }),
   dismiss: () => set({ error: null, notice: null }),
-  disconnected: () =>
-    set({
-      connection: "error",
-      snapshot: null,
-      busy: false,
-      error:
-        "Связь с Python потеряна. Автоматический перезапуск отключён; проверьте черновик перед подключением.",
-    }),
+  disconnected: () => set({
+    connection: "error",
+    snapshot: null,
+    busy: false,
+    error: "Связь с Python потеряна. Автоматический перезапуск отключён; проверьте черновик перед подключением.",
+  }),
   init: async () => {
     if (!isDesktop || get().connection === "connecting") return;
     set({ connection: "connecting", error: null });
@@ -84,17 +69,9 @@ export const useApp = create<State>((set, get) => ({
       const prev = get().snapshot;
       set((s) => ({
         snapshot,
-        entries:
-          prev?.stage !== snapshot.stage
-            ? [
-                {
-                  id: ++sequence,
-                  time: new Date().toLocaleTimeString("ru-RU"),
-                  detail: stageLabels[snapshot.stage],
-                },
-                ...s.entries,
-              ].slice(0, 100)
-            : s.entries,
+        entries: prev?.stage !== snapshot.stage
+          ? [{ id: ++sequence, time: new Date().toLocaleTimeString("ru-RU"), detail: stageLabels[snapshot.stage] }, ...s.entries].slice(0, 100)
+          : s.entries,
       }));
     } catch (e) {
       void request("stop").catch(() => {});
@@ -105,13 +82,12 @@ export const useApp = create<State>((set, get) => ({
   },
   run: async (operation, data = {}) => {
     if (get().busy) throw new Error("Дождитесь завершения текущей операции");
-    if (get().connection !== "connected")
-      throw new Error("Python не подключён");
+    if (get().connection !== "connected") throw new Error("Python не подключён");
     set({ busy: true, error: null, notice: null });
     try {
       const result = await request(operation, data);
       await get().sync();
-      set({ notice: operation === "save" ? "Настройки сохранены" : null });
+      set({ notice: operation === "save" ? "Настройки сохранены" : operation === "calibrate" ? "Клавиатура откалибрована" : null });
       return result;
     } catch (e) {
       set({ error: message(e) });
@@ -120,7 +96,6 @@ export const useApp = create<State>((set, get) => ({
       set({ busy: false });
     }
   },
-  // Emergency stop MUST NOT use run(): it bypasses the UI busy flag.
   stop: async () => {
     try {
       await request("stop");

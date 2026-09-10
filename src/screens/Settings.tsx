@@ -8,6 +8,7 @@ import {
   Keyboard,
   LockKeyhole,
   Plus,
+  RadioTower,
   Send,
   SlidersHorizontal,
   Trash2,
@@ -112,7 +113,46 @@ function SettingsForm({ config }: { config: Config }) {
           </div>
           <p className="field-hint">
             Backend делит текст на фрагменты и нажимает Enter после каждого.
-            Скорость ограничена 25–300 WPM.
+            Скорость ограничена 25–300 WPM. Эти параметры не применяются к живой
+            печати.
+          </p>
+        </article>
+        <article className="card">
+          <CardTitle icon={RadioTower}>Прочее</CardTitle>
+          <label className="consent">
+            <input
+              type="checkbox"
+              disabled={locked || !config.live_calibrated}
+              {...register("live_enabled")}
+            />
+            <span>
+              <strong>Живая печать</strong>
+              <br />
+              Одно обычное физическое нажатие выводит следующий символ
+              подготовленного текста. Enter и системные сочетания не
+              подменяются.
+            </span>
+          </label>
+          <div className="detail-row">
+            <span>Калибровка</span>
+            <strong>
+              {config.live_calibrated
+                ? (config.live_device ?? "Сохранена")
+                : "Не выполнена"}
+            </strong>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={locked || isDirty}
+            onClick={() => void s.run("calibrate").catch(ignored)}
+          >
+            <Keyboard size={16} />
+            Калибровать клавиатуру
+          </Button>
+          <p className="field-hint">
+            После запуска калибровки нажмите и отпустите F7 в течение 12 секунд.
+            Если клавиатура или USB-порт изменились, выполните калибровку снова.
           </p>
         </article>
         <article className="card">

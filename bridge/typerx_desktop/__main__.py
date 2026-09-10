@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .auth import AuthController, AuthFlowError, safe_diagnostic
 from .typing_output import driver_output, TypingInputError, TypingStopped
+from .live_typing import LiveSettings, calibrate_keyboard, run_live_output
 from .guard import capture_guard
 from .peers import (
     can_reply_to_dialog,
@@ -21,7 +22,7 @@ from .peers import (
     should_accept_incoming,
 )
 
-from .protocol import MAX_REQUEST, MAX_RESPONSE, MinuteCounters, ProtocolError, parse_request
+from .protocol import MAX_REQUEST, MAX_RESPONSE, PROTOCOL, MinuteCounters, ProtocolError, parse_request
 
 
 def main() -> int:
@@ -92,12 +93,9 @@ def main() -> int:
                 for message in reversed(messages):
                     if not message.raw_text:
                         continue
-                    rows.append({
-                        'id': message.id,
-                        'outgoing': bool(message.out),
-                        'sender_id': message.sender_id,
-                        'content': message.raw_text[:6000],
-                    })
+                    rows.append({'id': message.id, 'outgoing': bool(message.out),
+                                 'sender_id': message.sender_id,
+                                 'content': message.raw_text[:6000]})
                 return history_for_focus(rows, self.focus_sender_id)
 
             async def preview_messages(self, peer_id):
@@ -114,13 +112,9 @@ def main() -> int:
                     name = sender_label(sender, bool(message.out), str(sender_id))
                     if not message.out:
                         names[sender_id] = name
-                    rows.append({
-                        'id': int(message.id),
-                        'sender_id': sender_id,
-                        'name': name,
-                        'outgoing': bool(message.out),
-                        'text': message.raw_text[:500],
-                    })
+                    rows.append({'id': int(message.id), 'sender_id': sender_id,
+                                 'name': name, 'outgoing': bool(message.out),
+                                 'text': message.raw_text[:500]})
                 self.preview_names = names
                 return rows[-50:]
 
@@ -136,22 +130,37 @@ def main() -> int:
                 self.profile_cache = None
                 self.hotkeys_ok = False
                 self.bind_chat = True
+                self.live = LiveSettings(root)
                 super().__init__(root, callback)
                 self.telegram = DesktopGateway(self.store, self.notify)
                 self.auth = AuthController(self.telegram, self.store)
-                self.detail = "Движок chat-binding-3 · подготовьте безопасный запуск"
+                self.detail = "Движок live-typing-1 · подготовьте безопасный запуск"
 
             def notify(self, stage, detail):
                 if stage == 'incoming':
                     self.metrics.add('incoming')
                 super().notify(stage, detail)
 
+            def public_config(self):
+                config = self.store.public()
+                live = self.live.public()
+                warnings = [config.get('warning', ''), live['warning']]
+                return {**config, 'live_enabled': live['enabled'],
+                        'live_calibrated': live['calibrated'],
+                        'live_device': live['device'],
+                        'warning': ' '.join(value for value in warnings if value)}
+
             async def _output(self, text):
                 if self.stopped.is_set():
                     raise asyncio.CancelledError
                 await self.loop.run_in_executor(self.ui_executor, lambda: self.guard.check_field(empty=True))
-                self.writer = asyncio.create_task(asyncio.to_thread(
-                    driver_output, text, self.store.config, self.guard, self.stopped, self.notify))
+                if self.mode == 'live':
+                    call = lambda: run_live_output(text, self.live, self.guard,
+                                                   self.stopped, self.notify)
+                else:
+                    call = lambda: driver_output(text, self.store.config, self.guard,
+                                                  self.stopped, self.notify)
+                self.writer = asyncio.create_task(asyncio.to_thread(call))
                 try:
                     await asyncio.shield(self.writer)
                 except TypingStopped:
@@ -197,7 +206,7 @@ def main() -> int:
             async def _desktop_dispatch(self, operation, data):
                 if operation == 'snapshot':
                     active = bool(self.job and not self.job.done())
-                    return {'protocol': 1, 'config': self.store.public(),
+                    return {'protocol': PROTOCOL, 'config': self.public_config(),
                             'stage': self.stage, 'detail': self.detail,
                             'prepared': self.prepared, 'active': active,
                             'chats': self.chat_list, 'target': self.target,
@@ -205,6 +214,22 @@ def main() -> int:
                             'telemetry': self.metrics.snapshot()}
                 if operation in {'prepare', 'start'} and not self.hotkeys_ok:
                     raise AIError('Глобальная остановка F9 недоступна. Запуск заблокирован.')
+                if operation == 'prepare' and data.get('mode') == 'live':
+                    self.idle_only()
+                    self.prepared = False
+                    if not self.live.enabled:
+                        raise AIError('Включите живую печать в настройках [LIVE_DISABLED].')
+                    if not self.live.device_hwid:
+                        raise AIError('Сначала откалибруйте клавиатуру [LIVE_CALIBRATION].')
+                    self.manual_text = str(data.get('text', '')).strip()[:8000]
+                    if not self.manual_text:
+                        raise AIError('Введите текст для живой печати [LIVE_EMPTY].')
+                    self.mode = 'live'
+                    self.bind_chat = False
+                    self.prepared = True
+                    self.notify('ready', 'Откройте пустое целевое поле и нажмите F8. '
+                                'Обычные клавиши двигают текст; Enter и системные клавиши не подменяются.')
+                    return {}
                 if operation == 'prepare':
                     if data.get('mode') == 'ai' and self.target:
                         entity = self.telegram.peers.get(self.target['id'])
@@ -227,7 +252,8 @@ def main() -> int:
                         raise AIError('Telegram отключён. Подключите аккаунт перед запуском.')
                     epoch = self.epoch
                     self.guard = await self.loop.run_in_executor(
-                        self.ui_executor, capture_guard, self.target['name'] if self.mode == 'ai' else None, self.bind_chat)
+                        self.ui_executor, capture_guard,
+                        self.target['name'] if self.mode == 'ai' else None, self.bind_chat)
                     if not self.guard.hwnd or self.guard.hwnd == self.own_window:
                         raise AIError('Откройте поле в целевом приложении и нажмите F8 [INPUT_OWN_WINDOW].')
                     with self.control_lock:
@@ -237,8 +263,25 @@ def main() -> int:
                         self.prepared = False
                         self.job = asyncio.create_task(self._run())
                     return {}
-                if operation in {'code', 'login', 'profile', 'logout', 'chats', 'save', 'focus'}:
+                if operation in {'code', 'login', 'profile', 'logout', 'chats',
+                                 'save', 'focus', 'calibrate'}:
                     self.idle_only()
+                if operation == 'calibrate':
+                    self.prepared = False
+                    with self.control_lock:
+                        self.stopped.clear()
+                    self.notify('ready', 'Калибровка: нажмите и отпустите F7 в течение 12 секунд.')
+                    try:
+                        hwid = await asyncio.to_thread(calibrate_keyboard, self.stopped)
+                    except TypingStopped:
+                        raise AIError('Калибровка остановлена [LIVE_CALIBRATION_STOP].') from None
+                    except TypingInputError as error:
+                        raise AIError(str(error)) from None
+                    finally:
+                        self.stopped.set()
+                    self.live.set_device(hwid)
+                    self.notify('idle', 'Клавиатура откалибрована. Теперь можно включить живую печать.')
+                    return self.live.public()
                 if operation == 'code':
                     return await self.auth.request_code()
                 if operation == 'login':
@@ -275,6 +318,20 @@ def main() -> int:
                     if changed and not await self.auth.call('status', self.telegram.client.is_user_authorized()):
                         await self.auth.call('status', self.telegram.close(logout=False))
                         self.auth.reset()
+                if operation == 'save':
+                    enabled = data.get('live_enabled')
+                    if type(enabled) is not bool:
+                        raise AIError('Некорректная настройка живой печати [LIVE_CONFIG].')
+                    if enabled and not self.live.device_hwid:
+                        raise AIError('Сначала откалибруйте клавиатуру [LIVE_CALIBRATION].')
+                    backend_data = {key: value for key, value in data.items()
+                                    if key != 'live_enabled'}
+                    result = await super().dispatch(operation, backend_data)
+                    try:
+                        self.live.set_enabled(enabled)
+                    except TypingInputError as error:
+                        raise AIError(str(error)) from None
+                    return {**result, **self.public_config()}
                 result = await super().dispatch(operation, data)
                 if operation == 'logout':
                     self.profile_cache = None
@@ -290,7 +347,8 @@ def main() -> int:
                                 'focus': {'id': peer_id, 'name': self.target['name']},
                                 'messages': []}
                     messages = await self.telegram.preview_messages(peer_id)
-                    return {'selected': peer_id, 'kind': 'group', 'focus': None, 'messages': messages}
+                    return {'selected': peer_id, 'kind': 'group', 'focus': None,
+                            'messages': messages}
                 return result
 
         root = Path(os.environ.get('APPDATA', str(Path.home()))) / 'TyperX'
@@ -321,7 +379,7 @@ def main() -> int:
             runtime.stop()
             runtime.notify('error', message)
 
-        emit({'event': 'boot', 'protocol': 1})
+        emit({'event': 'boot', 'protocol': PROTOCOL})
         while not stopping.is_set():
             line = sys.stdin.buffer.readline(MAX_REQUEST + 1)
             if not line:
@@ -348,7 +406,7 @@ def main() -> int:
                 hotkeys.start()
                 runtime.hotkeys_ok = True
                 handshake = True
-                emit({'id': rid, 'ok': True, 'data': {'protocol': 1}})
+                emit({'id': rid, 'ok': True, 'data': {'protocol': PROTOCOL}})
             elif not handshake:
                 emit({'id': rid, 'ok': False, 'error': 'Сначала выполните инициализацию'})
             else:
