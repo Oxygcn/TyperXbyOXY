@@ -7,9 +7,10 @@ from typing import Any
 
 MAX_REQUEST = 65_536
 MAX_RESPONSE = 4_000_000
-PROTOCOL = 1
+PROTOCOL = 2
 ALLOWED = frozenset({'snapshot', 'save', 'code', 'login', 'logout', 'chats',
-                     'select', 'focus', 'test', 'prepare', 'stop', 'profile', 'hello', 'shutdown'})
+                     'select', 'focus', 'test', 'prepare', 'calibrate', 'stop',
+                     'profile', 'hello', 'shutdown'})
 
 
 class ProtocolError(ValueError):
@@ -38,7 +39,8 @@ def parse_request(line: bytes) -> dict:
     if not isinstance(value['operation'], str) or value['operation'] not in ALLOWED or not isinstance(value['data'], dict):
         raise ProtocolError('Unsupported operation')
     op, data = value['operation'], value['data']
-    if op in {'snapshot', 'code', 'logout', 'chats', 'test', 'stop', 'profile', 'shutdown'}:
+    if op in {'snapshot', 'code', 'logout', 'chats', 'test', 'calibrate',
+              'stop', 'profile', 'shutdown'}:
         if data:
             raise ProtocolError('Unexpected parameters')
     elif op == 'hello':
@@ -54,11 +56,11 @@ def parse_request(line: bytes) -> dict:
         if set(data) != {'sender_id'} or type(data['sender_id']) is not int or abs(data['sender_id']) > 2**53-1:
             raise ProtocolError('Invalid focus sender')
     elif op == 'prepare':
-        if not set(data) <= {'mode', 'text', 'consent', 'ack_send', 'bind_chat'} or data.get('mode') not in {'manual', 'ai'}:
+        if not set(data) <= {'mode', 'text', 'consent', 'ack_send', 'bind_chat'} or data.get('mode') not in {'manual', 'ai', 'live'}:
             raise ProtocolError('Invalid preparation')
         if type(data.get('bind_chat', True)) is not bool:
             raise ProtocolError('Invalid chat binding option')
-        if data.get('ack_send') is not True:
+        if data['mode'] in {'manual', 'ai'} and data.get('ack_send') is not True:
             raise ProtocolError('Enter acknowledgement required')
         if not text(data.get('text', ''), 8000):
             raise ProtocolError('Invalid text')
