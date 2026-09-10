@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "monkeytype",
+  "description": "Remote Monkeytype page receives only the single-character native input command.",
+  "windows": [
+    "monkeytype"
+  ],
+  "remote": {
+    "urls": [
+      "https://monkeytype.com/*"
+    ]
+  },
+  "permissions": [
+    "allow-monkeytype-input"
+  ]
+}

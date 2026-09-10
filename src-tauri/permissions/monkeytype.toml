@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-monkeytype-input"
+description = "Allow the app-owned Monkeytype WebView to submit one validated character to Windows SendInput while that window is foreground."
+commands.allow = ["monkeytype_key"]
