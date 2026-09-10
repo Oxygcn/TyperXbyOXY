@@ -1,8 +1,18 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowRight, Globe, Keyboard, ShieldCheck } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowUpRight,
+  Check,
+  Globe2,
+  Keyboard,
+  LoaderCircle,
+  ShieldCheck,
+  Square,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { isDesktop } from "../lib/bridge";
+import "./Monkeytype.css";
 
 export function MonkeytypePage() {
   const [busy, setBusy] = useState(false);
@@ -11,7 +21,7 @@ export function MonkeytypePage() {
 
   const open = async () => {
     if (!isDesktop) {
-      setError("Окно Monkeytype доступно только в Windows-приложении Tauri.");
+      setError("Monkeytype доступен только в Windows-приложении TyperX.");
       return;
     }
     setBusy(true);
@@ -33,68 +43,99 @@ export function MonkeytypePage() {
   };
 
   return (
-    <div className="studio-grid">
-      <article className="card studio-editor">
-        <div className="editor-heading">
-          <h2>Встроенный Monkeytype</h2>
-          <Globe size={18} aria-hidden="true" />
+    <div className="monkeytype-layout">
+      <section className="monkeytype-hero">
+        <div className="monkeytype-hero-top">
+          <span className="monkeytype-mark" aria-hidden="true">
+            <Keyboard size={25} />
+          </span>
+          <span className="monkeytype-domain">
+            <Globe2 size={14} /> monkeytype.com
+          </span>
         </div>
-        <p className="muted">
-          Откроется отдельное окно со сайтом monkeytype.com. Можно войти в свой
-          аккаунт: сессия хранится в профиле WebView2 приложения, не в обычном
-          браузере.
-        </p>
+
+        <div className="monkeytype-copy">
+          <p className="monkeytype-kicker">NATIVE WEBVIEW</p>
+          <h2>Тест скорости — внутри TyperX.</h2>
+          <p>
+            Откройте сайт, войдите в аккаунт и запускайте набор одной клавишей.
+            Сессия остаётся в отдельном профиле WebView2 приложения.
+          </p>
+        </div>
+
         {error && (
-          <div role="alert" className="notice-banner error-banner">
-            <ShieldCheck size={18} />
+          <div className="monkeytype-error" role="alert">
+            <AlertCircle size={17} />
             <span>{error}</span>
           </div>
         )}
-        {opened && !error && (
-          <div role="status" className="notice-banner success-banner">
-            Окно открыто. Если его не видно — проверьте панель задач.
+
+        <div className="monkeytype-actions">
+          <Button
+            className="monkeytype-open-button"
+            disabled={busy}
+            onClick={() => void open()}
+          >
+            {busy ? <LoaderCircle className="spin" size={17} /> : <Globe2 size={17} />}
+            {opened ? "Вернуться в Monkeytype" : "Открыть Monkeytype"}
+            <ArrowUpRight size={17} />
+          </Button>
+          <span className={`monkeytype-window-state ${opened ? "is-open" : ""}`}>
+            {opened ? <Check size={14} /> : <span />}
+            {opened ? "Окно открыто" : "Готово к запуску"}
+          </span>
+        </div>
+      </section>
+
+      <section className="monkeytype-control-panel">
+        <header className="monkeytype-control-header">
+          <div>
+            <p>УПРАВЛЕНИЕ</p>
+            <h2>Две клавиши. Без лишних действий.</h2>
           </div>
-        )}
-        <Button disabled={busy} onClick={() => void open()}>
-          <Globe size={16} />
-          {opened ? "Показать окно" : "Открыть Monkeytype"}
-          <ArrowRight size={16} />
-        </Button>
-        <p className="field-hint">
-          Синтетические клавиши могут игнорироваться античитом Monkeytype. Если
-          набор не идёт — напишите, подключим ввод через Interception в это
-          окно.
-        </p>
-      </article>
-      <div className="studio-side">
-        <article className="card launch-state">
-          <div className="card-heading">
-            <h2>Запуск</h2>
-            <Keyboard size={18} aria-hidden="true" />
-          </div>
-          <div className="key-visual">
+          <ShieldCheck size={22} aria-hidden="true" />
+        </header>
+
+        <div className="monkeytype-shortcuts">
+          <div className="monkeytype-shortcut">
             <kbd>F6</kbd>
-            <ArrowRight size={20} />
-            <Keyboard size={40} strokeWidth={1} />
+            <div>
+              <strong>Начать набор</strong>
+              <span>Печатает текущий тест нативными клавишами Windows.</span>
+            </div>
           </div>
-          <h3>Печать в окне сайта</h3>
-          <div className="launch-steps">
-            <p>
-              <span>1</span>Откройте Monkeytype и при необходимости войдите
-            </p>
-            <p>
-              <span>2</span>Начните тест и кликните по словам
-            </p>
-            <p>
-              <span>3</span>Нажмите F6 в окне Monkeytype
-            </p>
+          <div className="monkeytype-shortcut">
+            <kbd>F9</kbd>
+            <div>
+              <strong>Остановить</strong>
+              <span>Прерывает цикл после текущего символа.</span>
+            </div>
           </div>
-          <p className="muted">
-            F8 по-прежнему запускает движок Telegram. F9 останавливает набор в
-            Monkeytype.
-          </p>
-        </article>
-      </div>
+        </div>
+
+        <div className="monkeytype-focus-guard">
+          <Square size={13} fill="currentColor" />
+          <span>
+            Набор работает только пока окно Monkeytype находится на переднем
+            плане. Переключение окна останавливает его.
+          </span>
+        </div>
+
+        <ol className="monkeytype-steps">
+          <li>
+            <span>01</span>
+            Откройте сайт и выберите режим теста.
+          </li>
+          <li>
+            <span>02</span>
+            Кликните по словам, затем нажмите F6.
+          </li>
+          <li>
+            <span>03</span>
+            Для остановки нажмите F9 или смените окно.
+          </li>
+        </ol>
+      </section>
     </div>
   );
 }
