@@ -1,5 +1,6 @@
 #![cfg(windows)]
 mod job;
+mod monkeytype;
 mod process;
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use serde_json::{json, Value};
@@ -49,12 +50,20 @@ async fn backend_request(window: tauri::WebviewWindow, state: State<'_, Desktop>
     engine.request(&operation, data).await
 }
 
+#[tauri::command]
+async fn open_monkeytype(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    monkeytype::open(app, window).await
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(Desktop::default())
-        .invoke_handler(tauri::generate_handler![backend_connect, backend_request])
+        .invoke_handler(tauri::generate_handler![backend_connect, backend_request, open_monkeytype])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() != "main" {
+                    return;
+                }
                 api.prevent_close();
                 let app = window.app_handle().clone();
                 let state = app.state::<Desktop>();

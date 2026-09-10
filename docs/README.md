@@ -13,6 +13,7 @@
 | [OPERATIONS.md](OPERATIONS.md) | Запуск, восстановление, диагностика и безопасная эксплуатация | Операторы, QA |
 | [TESTING.md](TESTING.md) | Матрица тестов и release gates | QA, maintainers |
 | [VERIFICATION.md](VERIFICATION.md) | Исторический отчёт о ранней проверке | Аудиторы |
+| [MONKEYTYPE.md](MONKEYTYPE.md) | Встроенное окно Monkeytype и горячие клавиши F6/F9 | Пользователи, разработчики |
 
 ## Нормативные термины
 
