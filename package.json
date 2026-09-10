@@ -3,13 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=22.12 <25"
-  },
+  "engines": {"node": ">=22.12 <25"},
   "scripts": {
     "dev": "node scripts/generate-validators.mjs && vite",
     "build": "node scripts/generate-validators.mjs && tsc --noEmit && vite build",
-    "test": "vitest run",
+    "test": "node scripts/generate-validators.mjs && vitest run",
     "check": "tsc --noEmit",
     "tauri": "tauri",
     "desktop:dev": "tauri dev",

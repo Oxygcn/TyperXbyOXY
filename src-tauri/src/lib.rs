@@ -8,6 +8,8 @@ use tauri::{Manager, State};
 use tokio::sync::Mutex;
 use process::Engine;
 
+const PROTOCOL: u8 = 2;
+
 #[derive(Default)]
 struct Desktop {
     engine: Mutex<Option<Arc<Engine>>>,
@@ -26,7 +28,7 @@ async fn backend_connect(app: tauri::AppHandle, window: tauri::WebviewWindow,
     }
     let hwnd = window.hwnd().map_err(|_| "Не удалось получить целевое окно")?.0 as usize;
     let engine = Engine::spawn(app).await?;
-    if let Err(e) = engine.request("hello", json!({"protocol":1,"window":hwnd})).await {
+    if let Err(e) = engine.request("hello", json!({"protocol":PROTOCOL,"window":hwnd})).await {
         engine.terminate(); return Err(e);
     }
     let snapshot = match engine.request("snapshot", json!({})).await {
@@ -41,7 +43,7 @@ async fn backend_connect(app: tauri::AppHandle, window: tauri::WebviewWindow,
 async fn backend_request(window: tauri::WebviewWindow, state: State<'_, Desktop>,
                          operation: String, data: Value) -> Result<Value, String> {
     const ALLOWED: &[&str] = &["snapshot","save","code","login","logout","chats",
-                            "select","focus","test","prepare","stop","profile"];
+                            "select","focus","test","prepare","calibrate","stop","profile"];
     if window.label() != "main" || !ALLOWED.contains(&operation.as_str()) || !data.is_object() {
         return Err("Операция запрещена".into());
     }
@@ -61,9 +63,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![backend_connect, backend_request, open_monkeytype])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() != "main" {
-                    return;
-                }
+                if window.label() != "main" { return; }
                 api.prevent_close();
                 let app = window.app_handle().clone();
                 let state = app.state::<Desktop>();
