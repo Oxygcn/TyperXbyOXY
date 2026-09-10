@@ -58,13 +58,16 @@ def parse_request(line: bytes) -> dict:
     elif op == 'prepare':
         if not set(data) <= {'mode', 'text', 'consent', 'ack_send', 'bind_chat'} or data.get('mode') not in {'manual', 'ai', 'live'}:
             raise ProtocolError('Invalid preparation')
+        mode = data['mode']
         if type(data.get('bind_chat', True)) is not bool:
             raise ProtocolError('Invalid chat binding option')
-        if data['mode'] in {'manual', 'ai'} and data.get('ack_send') is not True:
+        if mode == 'live' and ({'consent', 'ack_send'} & set(data)):
+            raise ProtocolError('Live preparation does not accept send controls')
+        if mode in {'manual', 'ai'} and data.get('ack_send') is not True:
             raise ProtocolError('Enter acknowledgement required')
         if not text(data.get('text', ''), 8000):
             raise ProtocolError('Invalid text')
-        if data['mode'] == 'ai' and data.get('consent') is not True:
+        if mode == 'ai' and data.get('consent') is not True:
             raise ProtocolError('Provider consent required')
     elif op == 'save':
         validate_config(data)

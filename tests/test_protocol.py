@@ -19,6 +19,9 @@ class ProtocolTests(unittest.TestCase):
   self.assertTrue(parse_request(req('prepare',{'mode':'manual','text':'Hello','ack_send':True})))
  def test_live_does_not_accept_or_require_enter_ack(self):
   self.assertTrue(parse_request(req('prepare',{'mode':'live','text':'Hello'})))
+  for extra in ({'ack_send': True}, {'ack_send': False}, {'consent': True}):
+   with self.assertRaises(ProtocolError):
+    parse_request(req('prepare',{'mode':'live','text':'Hello',**extra}))
  def test_ai_consent(self):
   with self.assertRaises(ProtocolError):parse_request(req('prepare',{'mode':'ai','ack_send':True}))
   self.assertTrue(parse_request(req('prepare',{'mode':'ai','ack_send':True,'consent':True})))
